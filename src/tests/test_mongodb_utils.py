@@ -1,14 +1,7 @@
 import pytest
-from pymongo import MongoClient
 import mongomock
 import pandas as pd
-from mongodb_utils import upsert_dataframe_to_mongo, update_quantity_per_product
-
-# Mock MongoClient to avoid hitting an actual database
-@pytest.fixture
-def mock_mongo_client():
-    # Use mongomock to simulate MongoDB
-    return mongomock.MongoClient()
+from  .. mongodb_utils import upsert_dataframe_to_mongo, update_quantity_per_product
 
 def test_insert_dataframe_to_mongo(mock_mongo_client):
     # Given: A DataFrame to insert
@@ -27,17 +20,21 @@ def test_insert_dataframe_to_mongo(mock_mongo_client):
     assert collection.find_one({"productId": 1})["name"] == "Product A"
     assert collection.find_one({"productId": 2})["name"] == "Product B"
 
-def test_insert_dataframe_to_mongo_invalid_data(mock_mongo_client):
-    # Given: A DataFrame with missing required fields
-    df = pd.DataFrame([{"name": "Product A"}])  # Missing 'productId' and 'quantity'
+def test_upsert_dataframe_to_mongo_invalid_match_field(mock_mongo_client):
+    """
+    Test that upserting a DataFrame to MongoDB raises a ValueError
+    when the match_field is not a column in the DataFrame.
+    """
+    import pandas as pd
+    import pytest  # If using pytest
 
-    # When: Insert the invalid DataFrame
-    upsert_dataframe_to_mongo('test_db', 'inventory', df, mock_mongo_client, "productId")
+    # Given: A DataFrame without the required 'productId' column
+    df = pd.DataFrame([{"name": "Product A", "quantity": 10}])  # Missing 'productId'
 
-    # Then: Ensure no records are inserted due to validation issues (or handle them as appropriate)
-    db = mock_mongo_client['test_db']
-    collection = db['inventory']
-    assert collection.count_documents({}) == 0  # Or assert an error handling mechanism
+    # When/Then: Attempting to insert raises a ValueError
+    with pytest.raises(ValueError, match="match_field 'productId' is not a valid column in the DataFrame."):
+        upsert_dataframe_to_mongo('test_db', 'inventory', df, mock_mongo_client, "productId")
+
 
 def test_update_quantity_per_product(mock_mongo_client):
     # Given: An inventory collection with products and orders
@@ -61,3 +58,9 @@ def test_update_quantity_per_product(mock_mongo_client):
 
     assert updated_item_a["InventoryBalanceAfterOrder"] == 70  # 100 - (10 + 20)
     assert updated_item_b["InventoryBalanceAfterOrder"] == 170  # 200 - 30
+
+# Mock MongoClient
+@pytest.fixture
+def mock_mongo_client():
+    # Use mongomock to simulate MongoDB
+    return mongomock.MongoClient()

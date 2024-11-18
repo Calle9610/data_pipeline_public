@@ -1,14 +1,19 @@
 # Ignore virtual environments
 venv
 
+# Ignore IDE/editor settings
+.vscode/
+
 # Ignore Python cache files
 __pycache__/
+.pytest_cache/
 *.pyc
 *.pyo
 
 # Ignore data files
-data/raw/
-data/processed/
+# Not excluding these to simplyfy test
+# data/raw/
+# data/processed/
 
 # Ignore Docker metadata
 *.log

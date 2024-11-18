@@ -1,28 +1,36 @@
-from pymongo import MongoClient, UpdateOne
+from pymongo import MongoClient, UpdateOne, InsertOne
 from pymongo.collection import Collection
 from typing import Dict, Any, List
 import pandas as pd
 import logging
 
-def get_mongo_client(uri: str = "mongodb://localhost:27017/") -> MongoClient:
+def get_mongo_client(uri: str = "mongodb://mongodb:27017/") -> MongoClient:
     """Connects to the MongoDB instance."""
+    # for local development: "mongodb://localhost:27017/"
     try:
         client = MongoClient(uri)
+        print(f"Connect to MongoDB")
         return client
     except Exception as e:
         print(f"Failed to connect to MongoDB: {e}")
         return None
 
-# def insert_dataframe_to_mongo(db_name: str, collection_name: str, data: pd.DataFrame, client: MongoClient) -> None:
-#     """Inserts a DataFrame into a MongoDB collection."""
-#     db = client[db_name]
-#     collection = db[collection_name]
-#     records = data.to_dict(orient="records")
-#     collection.insert_many(records)
-#     collection.insert_many
-#     print(f"Inserted {len(records)} records into {collection_name}.")
+def store_raw_data_to_mongo(db_name: str, collection_name: str, df: pd.DataFrame, client: MongoClient, batch_size: int):
+    """
+    Store raw data in MongoDB collection using bulk_write for efficiency.
+    """
+    db = client[db_name]
+    collection = db[collection_name]
+    
+    # Convert DataFrame rows to a list of InsertOne operations
+    operations = [InsertOne(record) for record in df.to_dict('records')]
+    
+    # Batch and execute bulk writes
+    for i in range(0, len(operations), batch_size):
+        batch = operations[i:i + batch_size]
+        collection.bulk_write(batch)
 
-def upsert_dataframe_to_mongo(db_name: str, collection_name: str, df: pd.DataFrame, client, match_field: str, batch_size: int = 1000) -> None:
+def upsert_dataframe_to_mongo(db_name: str, collection_name: str, df: pd.DataFrame, client: MongoClient, match_field: str, batch_size: int = 1000) -> None:
     """
     Upsert a DataFrame into a MongoDB collection in batches.
 

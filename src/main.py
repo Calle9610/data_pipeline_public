@@ -1,5 +1,6 @@
 import os
 from ingestion import load_csv
+from validation import validate_data, remove_dublicates
 from mongodb_utils import (
     get_mongo_client,
     upsert_dataframe_to_mongo, 
@@ -10,38 +11,53 @@ from mongodb_utils import (
     update_order_with_delivery_status,
     get_inventory_with_highest_order,
     summarize_cannot_deliver_orders,
-    summarize_delivered_orders
+    summarize_delivered_orders,
+    store_raw_data_to_mongo
 
 )
-RAW_DIR = "data/raw/"
-DB_NAME = "data_pipeline"
-ORDERS_COLLECTION = "orders"
-INVENTORY_COLLECTION = "inventory"
-COMBINED_COLLECTION = "combined_data"
+RAW_DIR: str = "/app/data/raw/"
+PROCESSED_DIR: str = "/app/data/processed/"
+DB_NAME: str = "data_pipeline"
+RAW_ORDERS_COLLECTION: str = "raw_orders"
+RAW_INVENTORY_COLLECTION: str = "raw_inventory"
+ORDERS_COLLECTION: str = "orders"
+INVENTORY_COLLECTION: str = "inventory"
+COMBINED_COLLECTION: str = "combined_data"
+CRITICAL_COLUMNS_ORDER: list = ['orderId','productId', 'dateTime', 'quantity']
+CRITICAL_COLUMNS_INVENTORY: list = ['productId', 'quantity', 'name', 'quantity']
 
 def main():
     # Load raw data
-    orders = load_csv(os.path.join(RAW_DIR, "orders.csv"))
-    inventory = load_csv(os.path.join(RAW_DIR, "inventory.csv"))
-    
+    orders = load_csv(os.path.join(RAW_DIR, "orders.csv"), PROCESSED_DIR)
+    inventory = load_csv(os.path.join(RAW_DIR, "inventory.csv"), PROCESSED_DIR)
+
     # TODO: motivera varför jag anser detta rimligt
+    try:
+        validate_data(orders, CRITICAL_COLUMNS_ORDER)
+        validate_data(inventory, CRITICAL_COLUMNS_INVENTORY)
+        print("Data is valid!")
+    except ValueError as e:
+        print(f"Validation failed: {e}")
 
-
-    print(f"Orders count BEFORE cleaning dublicates: {orders.shape[0]}")
-    orders_no_duplicates = orders.drop_duplicates(subset=["orderId"])
-    print(f"Orders count AFTER cleaning dublicates: {orders_no_duplicates.shape[0]}")
-
-    print(f"Inventory count BEFORE cleaning dublicates: {inventory.shape[0]}")
-    inventory_no_duplicates = inventory.drop_duplicates(subset=["productId"])
-    print(f"Inventory count AFTER cleaning dublicates: {inventory_no_duplicates.shape[0]}")
-    
     # Connect to MongoDB
     client = get_mongo_client()
     if not client:
         return
+    
+    # ingests the two datasets and stores the raw data
+    # added last minute after have re-read the instructions
+    store_raw_data_to_mongo(DB_NAME, RAW_ORDERS_COLLECTION, orders, client, batch_size=1000)
+    store_raw_data_to_mongo(DB_NAME, RAW_INVENTORY_COLLECTION, inventory, client, batch_size=1000)
+
+    # clean dataset from dublicates
+    # since i use upsert on my shoosen keys this can see unnecessary
+    # but i also wanted to print out to highlight if any dublicates was removed
+    orders_no_duplicates = remove_dublicates(orders, 'orderId', ORDERS_COLLECTION)
+    inventory_no_duplicates = remove_dublicates(inventory, 'productId', INVENTORY_COLLECTION)
 
     # Insert raw and processed data into MongoDB
-    # Prefered to use upsert to insert so this code is reusable, can be run through over and over and avoid dublicates etc. 
+    # I used two collections to keep my changes to the data persisted
+    # Prefered to use upsert to insert so this code is reusable, can be run through over and over and avoid creating dublicates etc. 
     upsert_dataframe_to_mongo(DB_NAME, ORDERS_COLLECTION, orders_no_duplicates, client, match_field="orderId", batch_size=1000)
     upsert_dataframe_to_mongo(DB_NAME, INVENTORY_COLLECTION, inventory_no_duplicates, client, match_field="productId", batch_size=1000)
 
@@ -63,8 +79,6 @@ def main():
 
     print("Inventory updated successfully and data saved to MongoDB!")
 
-    # TODO: är denna helt irrelevant även om snygg?
-    total_quantity = total_quantity_per_product(inventory_collection)
 
 
     #Calculate and update inventory collection with Inventory balance
@@ -88,6 +102,9 @@ def main():
     print(f" Need to fill up stock on {len(inventory_negative_balance)} products")
     for inv in inventory_negative_balance:
         print(f" Need to fill up stock of: productId: {inv['productId']} and name: {inv['productName']}")
+
+    #
+    total_quantity = total_quantity_per_product(inventory_collection)
 
     # Display which orders can't be delivered and total value od these orders
 
