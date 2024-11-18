@@ -119,15 +119,6 @@ def main():
     print(f"There are {delivered['count']} orders that has been delivered.")
     print(f"The total order value of these are {delivered['totalAmount']} SEK.")
 
-# TODO:
-# Se över validering
-# Se över typing
-# Se över unit testing
-# Se över readme
-# Se över hur man kör hela applicationen i docker
-# Skriv ihop vad jag hade velat göra om jag hade mer tid'
-# kommentera koden 
-
 
 if __name__ == "__main__":
     main()
