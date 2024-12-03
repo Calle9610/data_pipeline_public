@@ -8,6 +8,7 @@ def load_csv(file_path: str, processed_folder: str) -> pd.DataFrame:
         # Load the CSV into a DataFrame
         df = pd.read_csv(file_path)
         
+        # TODO: uncomment
         # Ensure the processed folder exists, create if it doesn't
         if not os.path.exists(processed_folder):
             os.makedirs(processed_folder)

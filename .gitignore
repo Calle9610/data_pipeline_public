@@ -4,6 +4,9 @@ venv
 # Ignore IDE/editor settings
 .vscode/
 
+# Ignore Data
+data
+
 # Ignore Python cache files
 __pycache__/
 .pytest_cache/

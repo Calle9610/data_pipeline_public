@@ -3,10 +3,14 @@ from pymongo.collection import Collection
 from typing import Dict, Any, List
 import pandas as pd
 import logging
+from typing import Type
+from pydantic import BaseModel
 
 def get_mongo_client(uri: str = "mongodb://mongodb:27017/") -> MongoClient:
     """Connects to the MongoDB instance."""
     # for local development: "mongodb://localhost:27017/"
+    # for docker: "mongodb://mongodb:27017/"
+    # TODO: change uri
     try:
         client = MongoClient(uri)
         print(f"Connect to MongoDB")
@@ -30,7 +34,31 @@ def store_raw_data_to_mongo(db_name: str, collection_name: str, df: pd.DataFrame
         batch = operations[i:i + batch_size]
         collection.bulk_write(batch)
 
-def upsert_dataframe_to_mongo(db_name: str, collection_name: str, df: pd.DataFrame, client: MongoClient, match_field: str, batch_size: int = 1000) -> None:
+def store_raw_data_to_mongo_with_schema_validation(db_name: str, collection_name: str, df: pd.DataFrame, client: MongoClient, batch_size: int, schema: Type[BaseModel]):
+    """
+    Store raw data in MongoDB collection using bulk_write for efficiency.
+    """
+    db = client[db_name]
+    collection = db[collection_name]
+    
+    # Convert DataFrame rows to a list of InsertOne operations
+    operations = []
+
+    for record in df.to_dict('records'):
+        try:
+            # Validate the record using the schema
+            validated_record = schema(**record)
+            operations.append(InsertOne(validated_record.model_dump()))
+        except ValueError as e:
+            print(f"Validation failed for record {record}: {e}")
+
+    
+    # Batch and execute bulk writes
+    for i in range(0, len(operations), batch_size):
+        batch = operations[i:i + batch_size]
+        collection.bulk_write(batch)
+
+def upsert_dataframe_to_mongo(db_name: str, collection_name: str, df: pd.DataFrame, client: MongoClient, match_fields: list[str], batch_size: int = 1000) -> None:
     """
     Upsert a DataFrame into a MongoDB collection in batches.
 
@@ -46,8 +74,8 @@ def upsert_dataframe_to_mongo(db_name: str, collection_name: str, df: pd.DataFra
     if not isinstance(batch_size, int) or batch_size <= 0:
         raise ValueError("batch_size must be a positive integer.")
     
-    if match_field not in df.columns:
-        raise ValueError(f"match_field '{match_field}' is not a valid column in the DataFrame.")
+    if not all(field in df.columns for field in match_fields):
+        raise ValueError(f"match_field '{match_fields}' is not a valid column in the DataFrame.")
     
     if df.empty:
         logging.warning("The provided DataFrame is empty. No data to upsert.")
@@ -63,12 +91,13 @@ def upsert_dataframe_to_mongo(db_name: str, collection_name: str, df: pd.DataFra
         # Prepare operations for bulk_write
         operations = []
         for record in records:
-            # Check if the match_field exists in the record
-            if match_field not in record:
-                logging.warning(f"Record {record} does not contain the match_field '{match_field}', skipping this record.")
-                continue  # Skip the record if match_field is missing
+            # Create the query using the match_fields
+            query = {field: record[field] for field in match_fields if field in record}
 
-            query = {match_field: record[match_field]}
+            if not query:
+                logging.warning(f"Record {record} does not contain the match fields {match_fields}, skipping this record.")
+                continue  # Skip the record if match fields are missing
+
             update = {"$set": record}
             operations.append(UpdateOne(query, update, upsert=True))
 

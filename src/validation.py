@@ -34,9 +34,9 @@ def validate_data(df: pd.DataFrame, critical_columns: list) -> bool:
         raise ValueError("Some rows have empty 'productId'.")
     
 
-def remove_dublicates(df: pd.DataFrame, key: str, collection_name: str):
+def remove_dublicates(df: pd.DataFrame, keys: list, collection_name: str):
         print(f"{collection_name} count BEFORE cleaning duplicates: {df.shape[0]}")
-        df = df.drop_duplicates(subset=[key])
+        df = df.drop_duplicates(subset=keys)
         print(f"{collection_name} count AFTER cleaning duplicates: {df.shape[0]}")
         return df
     
